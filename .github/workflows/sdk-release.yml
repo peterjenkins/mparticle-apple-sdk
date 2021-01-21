@@ -54,6 +54,7 @@ jobs:
               export RELEASE_ID="$(cat /tmp/release-id | sed 's/[ ]*//g')"
               pushd /tmp; git clone https://github.com/Carthage/Carthage && cd Carthage && make install; popd
               git apply Scripts/0001-Set-excluded-archs.patch
+              git add .
               git commit -m "Set excluded archs"
               DEVELOPER_DIR="/Applications/Xcode_11.4.1.app/Contents/Developer" carthage build --no-skip-current
               carthage archive
