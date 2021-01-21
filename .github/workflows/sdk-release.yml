@@ -22,6 +22,8 @@ jobs:
               env | grep -q '^GITHUB_ACCESS_TOKEN=' || (echo "Required environment variable GITHUB_ACCESS_TOKEN is not set" && exit 1)
               git apply Scripts/0001-DISABLE-LOCATION.patch || (echo "Disable location patch could not be successfully applied" && exit 1)
               git checkout .
+              git apply Scripts/0001-Set-excluded-archs.patch || (echo "Excluded archs patch could not be successfully applied" && exit 1)
+              git checkout .
 
       - name: Setup git config
         run: |
@@ -50,6 +52,9 @@ jobs:
         run: |
               curl -v --data '{"tag_name": "'"$VERSION"'","target_commitish": "master","name": "Version '"$VERSION"'","body": "","draft": false,"prerelease": false}' https://api.github.com/repos/peterjenkins/mparticle-apple-sdk/releases?access_token=$GITHUB_ACCESS_TOKEN | grep '^  "id": ' | sed 's/"id":[ ]*\([^,]*\),/\1/' > /tmp/release-id
               export RELEASE_ID="$(cat /tmp/release-id | sed 's/[ ]*//g')"
+              pushd /tmp; git clone https://github.com/Carthage/Carthage && cd Carthage && make install; popd
+              git apply Scripts/0001-Set-excluded-archs.patch
+              git commit -m "Set excluded archs"
               DEVELOPER_DIR="/Applications/Xcode_11.4.1.app/Contents/Developer" carthage build --no-skip-current
               carthage archive
               curl -v "https://uploads.github.com/repos/peterjenkins/mparticle-apple-sdk/releases/$RELEASE_ID/assets?access_token=$GITHUB_ACCESS_TOKEN&name=mParticle_Apple_SDK.framework.zip" --header 'Content-Type: application/zip' --upload-file mParticle_Apple_SDK.framework.zip -X POST || true
@@ -61,8 +66,7 @@ jobs:
               carthage archive
               mv "mParticle_Apple_SDK.framework.zip" "mParticle_Apple_SDK.framework.nolocation.zip"
               curl -v "https://uploads.github.com/repos/peterjenkins/mparticle-apple-sdk/releases/$RELEASE_ID/assets?access_token=$GITHUB_ACCESS_TOKEN&name=mParticle_Apple_SDK.framework.nolocation.zip" --header 'Content-Type: application/zip' --upload-file mParticle_Apple_SDK.framework.nolocation.zip -X POST || true
-              git reset --hard HEAD^
-              pushd /tmp; git clone https://github.com/Carthage/Carthage && cd Carthage && make install; popd
+              git reset --hard HEAD^^
               carthage build --no-skip-current --use-xcframeworks
               cd Carthage/Build
               zip -r mParticle_Apple_SDK.xcframework.zip ./mParticle_Apple_SDK.xcframework
