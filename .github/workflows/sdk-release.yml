@@ -62,7 +62,7 @@ jobs:
               mv "mParticle_Apple_SDK.framework.zip" "mParticle_Apple_SDK.framework.nolocation.zip"
               curl -v "https://uploads.github.com/repos/peterjenkins/mparticle-apple-sdk/releases/$RELEASE_ID/assets?access_token=$GITHUB_ACCESS_TOKEN&name=mParticle_Apple_SDK.framework.nolocation.zip" --header 'Content-Type: application/zip' --upload-file mParticle_Apple_SDK.framework.nolocation.zip -X POST || true
               git reset --hard HEAD^
-              pushd /tmp; git clone git@github.com:Carthage/Carthage && cd Carthage && make install; popd
+              pushd /tmp; git clone https://github.com/Carthage/Carthage && cd Carthage && make install; popd
               carthage build --no-skip-current --use-xcframeworks
               cd Carthage/Build
               zip -r mParticle_Apple_SDK.xcframework.zip ./mParticle_Apple_SDK.xcframework
