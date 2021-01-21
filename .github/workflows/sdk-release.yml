@@ -1,0 +1,80 @@
+name: iOS SDK Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      VERSION:
+        required: true
+
+jobs:
+  release:
+    runs-on: macOS-latest
+    env:
+      VERSION: ${{ github.event.inputs.VERSION }}
+      GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Validate environment and no-location patch
+        run: |
+              env | grep -q '^VERSION=' || (echo "Required environment variable VERSION is not set" && exit 1)
+              env | grep -q '^GITHUB_ACCESS_TOKEN=' || (echo "Required environment variable GITHUB_ACCESS_TOKEN is not set" && exit 1)
+              git apply Scripts/0001-DISABLE-LOCATION.patch || (echo "Disable location patch could not be successfully applied" && exit 1)
+              git checkout .
+
+      - name: Setup git config
+        run: |
+              git config user.email "developers@mparticle.com"
+              git config user.name "mParticle Automation"
+
+      - name: Update version numbers
+        run: |
+              sed -i '' 's/NSString \*const kMParticleSDKVersion = @".*/NSString *const kMParticleSDKVersion = @"'"$VERSION"'";/' mParticle-Apple-SDK/MPIConstants.m
+              /usr/libexec/PlistBuddy -c "Set CFBundleShortVersionString $VERSION" Framework/Info.plist
+              jq --indent 3 '. += {'"\"$VERSION\""': "'"https://github.com/mParticle/mparticle-apple-sdk/releases/download/$VERSION/mParticle_Apple_SDK.framework.zip"'"}' mParticle_Apple_SDK.json
+              sudo npm install -g podspec-bump
+              podspec-bump -w -i $VERSION
+              git add mParticle-Apple-SDK/MPIConstants.m Framework/Info.plist; git add mParticle-Apple-SDK.podspec; git add mParticle_Apple_SDK.json; git commit -m "Update version to $VERSION"
+
+      - name: Push publicly to Github
+
+        run: |
+              git tag $VERSION
+              git push origin HEAD:development
+              git push origin HEAD:master
+              git push origin $VERSION
+
+      - name: Build and upload Carthage repo artifacts
+
+        run: |
+              curl -v --data '{"tag_name": "'"$VERSION"'","target_commitish": "master","name": "Version '"$VERSION"'","body": "","draft": false,"prerelease": false}' https://api.github.com/repos/peterjenkins/mparticle-apple-sdk/releases?access_token=$GITHUB_ACCESS_TOKEN | grep '^  "id": ' | sed 's/"id":[ ]*\([^,]*\),/\1/' > /tmp/release-id
+              export RELEASE_ID="$(cat /tmp/release-id | sed 's/[ ]*//g')"
+              DEVELOPER_DIR="/Applications/Xcode_11.4.1.app/Contents/Developer" carthage build --no-skip-current
+              carthage archive
+              curl -v "https://uploads.github.com/repos/peterjenkins/mparticle-apple-sdk/releases/$RELEASE_ID/assets?access_token=$GITHUB_ACCESS_TOKEN&name=mParticle_Apple_SDK.framework.zip" --header 'Content-Type: application/zip' --upload-file mParticle_Apple_SDK.framework.zip -X POST || true
+              rm "mParticle_Apple_SDK.framework.zip"
+              git apply ./Scripts/0001-DISABLE-LOCATION.patch
+              git add .
+              git commit -m "DISABLE LOCATION"
+              DEVELOPER_DIR="/Applications/Xcode_11.4.1.app/Contents/Developer" carthage build --no-skip-current || true
+              carthage archive
+              mv "mParticle_Apple_SDK.framework.zip" "mParticle_Apple_SDK.framework.nolocation.zip"
+              curl -v "https://uploads.github.com/repos/peterjenkins/mparticle-apple-sdk/releases/$RELEASE_ID/assets?access_token=$GITHUB_ACCESS_TOKEN&name=mParticle_Apple_SDK.framework.nolocation.zip" --header 'Content-Type: application/zip' --upload-file mParticle_Apple_SDK.framework.nolocation.zip -X POST || true
+              git reset --hard HEAD^
+              pushd /tmp; git clone git@github.com:Carthage/Carthage && cd Carthage && make install; popd
+              carthage build --no-skip-current --use-xcframeworks
+              cd Carthage/Build
+              zip -r mParticle_Apple_SDK.xcframework.zip ./mParticle_Apple_SDK.xcframework
+              curl -v "https://uploads.github.com/repos/peterjenkins/mparticle-apple-sdk/releases/$RELEASE_ID/assets?access_token=$GITHUB_ACCESS_TOKEN&name=mParticle_Apple_SDK.xcframework.zip" --header 'Content-Type: application/zip' --upload-file mParticle_Apple_SDK.xcframework.zip -X POST || true
+              rm "mParticle_Apple_SDK.xcframework.zip"
+              cd ../..
+              git apply ./Scripts/0001-DISABLE-LOCATION.patch
+              git add .
+              git commit -m "DISABLE LOCATION"
+              carthage build --no-skip-current --use-xcframeworks || true
+              cd Carthage/Build
+              zip -r mParticle_Apple_SDK.xcframework.nolocation.zip ./mParticle_Apple_SDK.xcframework
+              curl -v "https://uploads.github.com/repos/peterjenkins/mparticle-apple-sdk/releases/$RELEASE_ID/assets?access_token=$GITHUB_ACCESS_TOKEN&name=mParticle_Apple_SDK.xcframework.nolocation.zip" --header 'Content-Type: application/zip' --upload-file mParticle_Apple_SDK.xcframework.nolocation.zip -X POST || true
+              git reset --hard HEAD^
+
